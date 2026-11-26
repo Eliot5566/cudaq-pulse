@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import builtins
 import copy
+import functools
 import types
 import weakref
 from itertools import compress
@@ -432,6 +433,17 @@ def build_guard(
             module = getattr(value, "__module__", "") or ""
             if not module.startswith("cudaq_pulse."):
                 walk(value, depth + 1)
+        elif isinstance(value, types.MethodType):
+            # A bound method or a classmethod, gates.x(d): the tracer inlines
+            # its function, so the globals that function reads count too.
+            follow(value.__func__, depth)
+        elif isinstance(value, functools.partial):
+            follow(value.func, depth)
+        elif value.__class__ in (dict, list, tuple):
+            # A helper taken from a table, GATES["x"](d).
+            for item in value.values() if value.__class__ is dict else value:
+                if callable(item):
+                    follow(item, depth)
         inner = getattr(value, "__pulse_kernel_fn__", None)
         if isinstance(inner, types.FunctionType):
             walk(inner, depth + 1)
