@@ -276,8 +276,54 @@ class Time(float):
         pair = self._other(">=", other)
         return NotImplemented if pair is None else pair[0] >= pair[1]
 
+    # ── NumPy numbers ───────────────────────────────────────────────────
+    # A NumPy number on the left would otherwise take a time for the bare
+    # float it subclasses: np.float64(4) * pulse.ns was np.float64(4.0), read
+    # as cycles. Between a time and a number, NumPy's arithmetic and
+    # comparisons use the operators above; arrays and other functions see the
+    # float, as before.
+
+    def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
+        names = _NUMPY_OPERATORS.get(ufunc.__name__)
+        if (
+            names is not None
+            and method == "__call__"
+            and not kwargs
+            and len(inputs) == 2
+            and all(getattr(x, "ndim", 0) == 0 for x in inputs)
+        ):
+            # NumPy may pass a number as a 0-d array; x[()] is its scalar.
+            left, right = (x[()] if hasattr(x, "dtype") else x for x in inputs)
+            if left.__class__ is Time:
+                result = getattr(left, names[0])(right)
+            else:
+                result = getattr(right, names[1])(left)
+            if result is not NotImplemented:
+                return result
+        inputs = tuple(float(x) if x.__class__ is Time else x for x in inputs)
+        return getattr(ufunc, method)(*inputs, **kwargs)
+
 
 _new_float = float.__new__
+
+# A NumPy ufunc's name: the Time method for a time on its left, and for a
+# time on its right.
+_NUMPY_OPERATORS = {
+    "multiply": ("__mul__", "__rmul__"),
+    "divide": ("__truediv__", "__rtruediv__"),
+    "true_divide": ("__truediv__", "__rtruediv__"),
+    "add": ("__add__", "__radd__"),
+    "subtract": ("__sub__", "__rsub__"),
+    "floor_divide": ("__floordiv__", "__rfloordiv__"),
+    "remainder": ("__mod__", "__rmod__"),
+    "power": ("__pow__", "__rpow__"),
+    "equal": ("__eq__", "__eq__"),
+    "not_equal": ("__ne__", "__ne__"),
+    "less": ("__lt__", "__gt__"),
+    "less_equal": ("__le__", "__ge__"),
+    "greater": ("__gt__", "__lt__"),
+    "greater_equal": ("__ge__", "__le__"),
+}
 
 
 # The time of *numerator* / *denominator* ns, given coprime with a

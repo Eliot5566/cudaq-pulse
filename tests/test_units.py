@@ -99,6 +99,34 @@ def test_a_time_compared_with_a_bare_number_is_an_error(compare, number):
         _ = 20 * ns == Fraction(20)
 
 
+@pytest.mark.parametrize("number", [np.float64(4), np.int64(4), np.float32(4)])
+def test_a_numpy_number_times_a_unit_is_a_time(number):
+    for value in (number * ns, ns * number, number * ns / np.float64(2) * 2):
+        assert value.__class__ is pulse.Time and value.exact_ns == 4
+    assert [s * ns for s in np.linspace(4, 8, 2)] == [4 * ns, 8 * ns]
+
+
+@pytest.mark.parametrize(
+    ("expression", "message"),
+    [
+        (lambda t: np.float64(4) + t, "mixes a time with"),
+        (lambda t: np.float64(4) - t, "mixes a time with"),
+        (lambda t: np.float64(3) / t, "a number over a time"),
+        (lambda t: np.float64(2) ** t, "raises to a time"),
+        (lambda t: np.float64(4) < t, "compares a time with a bare number"),
+        (lambda t: np.float64(20) == t, "compares a time with a bare number"),
+    ],
+)
+def test_a_numpy_number_on_the_left_follows_the_same_rules(expression, message):
+    with pytest.raises(TypeError, match=message):
+        expression(20 * ns)
+
+
+def test_numpy_arrays_and_functions_still_see_the_float():
+    assert np.array_equal(np.array([1.0, 2.0]) * ns, [1.0, 2.0])
+    assert np.sin(0 * ns) == 0.0
+
+
 def test_a_time_never_hashes_like_a_number():
     times = [20 * ns, 0 * ns, -3 * us, 0.1 * us, 1 / 3 * ns]
     for t in times:
